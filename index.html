@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Last War — Base Map</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <div class="auth-overlay" id="auth-overlay">
+        <form class="auth-card" id="auth-form">
+            <div class="auth-icon"><i class="fa-solid fa-shield-halved"></i></div>
+            <span class="eyebrow">Restricted access</span>
+            <h2>Server 2237</h2>
+            <p>Enter the map password to decrypt the player database.</p>
+            <label class="auth-field">
+                <span>Password</span>
+                <div class="password-box">
+                    <i class="fa-solid fa-key"></i>
+                    <input type="password" id="auth-password" autocomplete="current-password" autofocus required>
+                    <button type="button" id="toggle-password" aria-label="Show password"><i class="fa-solid fa-eye"></i></button>
+                </div>
+            </label>
+            <div class="auth-error" id="auth-error" role="alert"></div>
+            <button class="button primary auth-submit" id="auth-submit" type="submit">
+                <i class="fa-solid fa-unlock-keyhole"></i><span>Unlock map</span>
+            </button>
+            <small><i class="fa-solid fa-lock"></i> Player data is encrypted in the repository.</small>
+        </form>
+    </div>
+
+    <div class="map-app locked" id="map-app" aria-hidden="true">
+        <header class="topbar">
+            <div class="brand">
+                <div class="brand-icon"><i class="fa-solid fa-map-location-dot"></i></div>
+                <div>
+                    <span class="eyebrow">Server <strong id="server-id">—</strong></span>
+                    <h1>Base Map</h1>
+                </div>
+            </div>
+
+            <div class="topbar-stats">
+                <div class="topbar-stat">
+                    <span>Players</span>
+                    <strong id="total-count">0</strong>
+                </div>
+                <div class="topbar-stat">
+                    <span>Visible</span>
+                    <strong id="visible-count">0</strong>
+                </div>
+                <div class="topbar-stat">
+                    <span>Sources</span>
+                    <strong id="capture-count">0</strong>
+                </div>
+            </div>
+
+            <div class="topbar-actions">
+                <span class="update-status" id="update-status">Loading players…</span>
+                <button class="button primary" id="refresh-data">
+                    <i class="fa-solid fa-rotate"></i><span>Reload data</span>
+                </button>
+            </div>
+        </header>
+
+        <div class="workspace">
+            <aside class="sidebar">
+                <div class="filters">
+                    <label class="field">
+                        <span>Search player or coordinates</span>
+                        <div class="search-box">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="search" id="player-search" placeholder="Name, UID or 513,556" autocomplete="off">
+                        </div>
+                    </label>
+
+                    <label class="field">
+                        <span>Alliance</span>
+                        <select id="alliance-filter">
+                            <option value="all">All alliances</option>
+                        </select>
+                    </label>
+
+                    <div class="level-filters">
+                        <label class="field">
+                            <span>Minimum level</span>
+                            <select id="min-level-filter">
+                                <option value="all">Any</option>
+                            </select>
+                        </label>
+                        <label class="field">
+                            <span>Maximum level</span>
+                            <select id="max-level-filter">
+                                <option value="all">Any</option>
+                            </select>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="legend" id="alliance-legend"></div>
+
+                <section class="selection" id="player-selection">
+                    <div class="selection-empty">
+                        <i class="fa-solid fa-location-crosshairs"></i>
+                        <strong>No base selected</strong>
+                        <p>Click a point or choose a player from the list.</p>
+                    </div>
+                </section>
+
+                <div class="results-heading">
+                    <span>Players found</span>
+                    <small id="result-count">0</small>
+                </div>
+                <div class="results" id="player-results"></div>
+            </aside>
+
+            <main class="stage" id="map-stage">
+                <canvas id="world-map" aria-label="Server base map"></canvas>
+
+                <div class="map-toolbar">
+                    <button class="tool-button wide" id="fit-bases" title="Fit filtered bases">
+                        <i class="fa-solid fa-compress"></i><span>Fit bases</span>
+                    </button>
+                    <button class="tool-button wide" id="full-map" title="Show entire map">
+                        <i class="fa-solid fa-border-all"></i><span>Full map</span>
+                    </button>
+                    <span class="toolbar-divider"></span>
+                    <button class="tool-button" id="zoom-in" title="Zoom in"><i class="fa-solid fa-plus"></i></button>
+                    <button class="tool-button" id="zoom-out" title="Zoom out"><i class="fa-solid fa-minus"></i></button>
+                </div>
+
+                <div class="coordinates" id="cursor-coordinates">X — &nbsp; Y —</div>
+                <div class="map-hint"><i class="fa-solid fa-computer-mouse"></i> Drag to pan · Scroll to zoom</div>
+                <div class="loading-overlay" id="loading-overlay">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                    <span>Preparing map…</span>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+    <script src="app.js"></script>
+</body>
+</html>
