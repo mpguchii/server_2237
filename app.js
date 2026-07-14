@@ -84,6 +84,7 @@ function bindAuthEvents() {
             const payload = await decryptPlayerData(password);
             state.password = password;
             loadPayload(payload);
+            setLoading(false);
             elements.authPassword.value = '';
             elements.authOverlay.classList.add('hidden');
             elements.mapApp.classList.remove('locked');
