@@ -1,7 +1,7 @@
 const WORLD_SIZE = 1000;
 const CARD_WIDTH = 46;
 const CARD_HEIGHT = 54;
-const DETAIL_VIEW_WIDTH = 90;
+const CARD_MIN_PIXELS_PER_WORLD = 18;
 const ENCRYPTED_DATA_URL = 'players.enc';
 const DATA_AAD = 'server-2237-player-map';
 const ALLIANCE_COLORS = [
@@ -299,7 +299,7 @@ function selectPlayer(uid, center) {
             <div><span>UID</span><strong title="${player.uid}">${escapeHtml(player.uid)}</strong></div>
         </div>
     `;
-    if (center) centerAt(player.x, player.y, 65);
+    if (center) centerAt(player.x, player.y, getDetailFocusWidth());
     renderResults();
     scheduleDraw();
 }
@@ -358,6 +358,10 @@ function showFullMap() {
 function fitFiltered() {
     const players = state.filtered.length ? state.filtered : state.players;
     if (!players.length) return showFullMap();
+    if (players.length === 1) {
+        centerAt(players[0].x, players[0].y, getDetailFocusWidth());
+        return;
+    }
     const xs = players.map(player => player.x);
     const ys = players.map(player => player.y);
     const minX = Math.min(...xs);
@@ -378,6 +382,19 @@ function centerAt(x, y, width) {
     const aspect = rect.width / rect.height || 1;
     const height = width / aspect;
     setView(x - width / 2, y - height / 2, width, height);
+}
+
+function isDetailedView(rect = elements.canvas.getBoundingClientRect()) {
+    if (!rect.width || !rect.height) return false;
+    const horizontalScale = rect.width / state.view.width;
+    const verticalScale = rect.height / state.view.height;
+    return Math.min(horizontalScale, verticalScale) >= CARD_MIN_PIXELS_PER_WORLD;
+}
+
+function getDetailFocusWidth() {
+    const rect = elements.stage.getBoundingClientRect();
+    const availableWidth = Math.max(1, rect.width);
+    return Math.min(65, availableWidth / (CARD_MIN_PIXELS_PER_WORLD + 2));
 }
 
 function zoom(factor, clientX = null, clientY = null) {
@@ -414,7 +431,7 @@ function drawMap() {
 
     drawWorld(rect.width, rect.height);
     state.hitAreas = [];
-    const detailed = state.view.width <= DETAIL_VIEW_WIDTH;
+    const detailed = isDetailedView(rect);
     const marginWorld = detailed ? CARD_HEIGHT / rect.height * state.view.height : 4;
     const visible = state.filtered.filter(player =>
         player.x >= state.view.x - marginWorld &&
@@ -665,7 +682,7 @@ function bindEvents() {
         if (elements.canvas.hasPointerCapture(event.pointerId)) elements.canvas.releasePointerCapture(event.pointerId);
         if (!wasMoved) {
             const uid = findPlayerAt(event.clientX, event.clientY);
-            if (uid) selectPlayer(uid, state.view.width > DETAIL_VIEW_WIDTH);
+            if (uid) selectPlayer(uid, !isDetailedView());
         }
     };
     elements.canvas.addEventListener('pointerup', finishPointer);
