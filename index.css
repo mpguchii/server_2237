@@ -497,7 +497,7 @@ button { color: inherit; }
     .tool-button.wide span, .map-hint { display: none; }
 }
 
-@media (max-width: 700px), (max-height: 650px) {
+@media (max-width: 700px), (max-height: 650px), (pointer: coarse) {
     .player-dialog { align-items: flex-end; padding: 0; }
     .player-dialog-panel {
         width: 100%;

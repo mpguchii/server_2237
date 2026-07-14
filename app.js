@@ -284,11 +284,13 @@ function renderResults() {
         : '');
 
     elements.results.querySelectorAll('.result').forEach(button => {
-        button.addEventListener('click', () => selectPlayer(button.dataset.uid, true));
+        button.addEventListener('click', event => {
+            selectPlayer(button.dataset.uid, true, event.pointerType === 'touch');
+        });
     });
 }
 
-function selectPlayer(uid, center) {
+function selectPlayer(uid, center, forceDialog = false) {
     const player = state.players.find(item => item.uid === uid);
     if (!player) return;
     state.selectedUid = uid;
@@ -307,14 +309,16 @@ function selectPlayer(uid, center) {
     `;
     elements.selection.innerHTML = detailsHtml;
     elements.playerDialogContent.innerHTML = detailsHtml;
-    if (shouldUsePlayerDialog()) openPlayerDialog();
+    if (forceDialog || shouldUsePlayerDialog()) openPlayerDialog();
     if (center) centerAt(player.x, player.y, getDetailFocusWidth());
     renderResults();
     scheduleDraw();
 }
 
 function shouldUsePlayerDialog() {
-    return window.matchMedia('(max-width: 700px), (max-height: 650px)').matches;
+    return navigator.maxTouchPoints > 0 ||
+        window.matchMedia('(pointer: coarse)').matches ||
+        window.matchMedia('(max-width: 700px), (max-height: 650px)').matches;
 }
 
 function openPlayerDialog() {
@@ -778,7 +782,7 @@ function bindEvents() {
         }
         if (!cancelled && !wasMoved && state.activePointers.size === 0) {
             const uid = findPlayerAt(event.clientX, event.clientY);
-            if (uid) selectPlayer(uid, !isDetailedView());
+            if (uid) selectPlayer(uid, !isDetailedView(), event.pointerType === 'touch');
         }
     };
     elements.canvas.addEventListener('pointerup', finishPointer);
