@@ -409,9 +409,13 @@ button { color: inherit; }
     padding: 18px;
     background: rgba(3, 7, 15, 0.76);
     backdrop-filter: blur(8px);
+    pointer-events: none;
 }
 
-.player-dialog.open { display: flex; }
+.player-dialog.open {
+    display: flex;
+    pointer-events: auto;
+}
 
 .player-dialog-panel {
     width: min(420px, 100%);

@@ -323,12 +323,16 @@ function shouldUsePlayerDialog() {
 
 function openPlayerDialog() {
     elements.playerDialog.classList.add('open');
+    // Keep the modal visible even if the browser temporarily reuses an older
+    // stylesheet while GitHub Pages is rolling out a new deployment.
+    elements.playerDialog.style.display = 'flex';
     elements.playerDialog.setAttribute('aria-hidden', 'false');
     requestAnimationFrame(() => elements.playerDialogClose.focus());
 }
 
 function closePlayerDialog() {
     elements.playerDialog.classList.remove('open');
+    elements.playerDialog.style.removeProperty('display');
     elements.playerDialog.setAttribute('aria-hidden', 'true');
 }
 
@@ -632,7 +636,10 @@ function clientToWorld(clientX, clientY) {
 function bindEvents() {
     elements.refreshData.addEventListener('click', reloadEncryptedData);
     elements.playerDialogClose.addEventListener('click', closePlayerDialog);
-    elements.playerDialog.addEventListener('click', event => {
+    // Use pointerdown instead of click. On touch screens the canvas opens the
+    // dialog on pointerup; a following synthetic click can otherwise land on
+    // the newly shown backdrop and close it immediately.
+    elements.playerDialog.addEventListener('pointerdown', event => {
         if (event.target === elements.playerDialog) closePlayerDialog();
     });
     document.addEventListener('keydown', event => {
