@@ -55,6 +55,9 @@ const elements = {
     zoomOut: document.getElementById('zoom-out'),
     coordinates: document.getElementById('cursor-coordinates'),
     loading: document.getElementById('loading-overlay'),
+    playerDialog: document.getElementById('player-dialog'),
+    playerDialogContent: document.getElementById('player-dialog-content'),
+    playerDialogClose: document.getElementById('player-dialog-close'),
     toast: document.getElementById('toast')
 };
 
@@ -287,7 +290,7 @@ function selectPlayer(uid, center) {
     if (!player) return;
     state.selectedUid = uid;
     const color = state.colors[player.alliance];
-    elements.selection.innerHTML = `
+    const detailsHtml = `
         <div class="player-title">
             <div class="player-name" title="${escapeHtml(player.name)}">${escapeHtml(player.name)}</div>
             <span class="alliance-badge" style="background:${color}">${escapeHtml(player.alliance)}</span>
@@ -299,9 +302,27 @@ function selectPlayer(uid, center) {
             <div><span>UID</span><strong title="${player.uid}">${escapeHtml(player.uid)}</strong></div>
         </div>
     `;
+    elements.selection.innerHTML = detailsHtml;
+    elements.playerDialogContent.innerHTML = detailsHtml;
+    if (shouldUsePlayerDialog()) openPlayerDialog();
     if (center) centerAt(player.x, player.y, getDetailFocusWidth());
     renderResults();
     scheduleDraw();
+}
+
+function shouldUsePlayerDialog() {
+    return window.matchMedia('(max-width: 700px), (max-height: 650px)').matches;
+}
+
+function openPlayerDialog() {
+    elements.playerDialog.classList.add('open');
+    elements.playerDialog.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => elements.playerDialogClose.focus());
+}
+
+function closePlayerDialog() {
+    elements.playerDialog.classList.remove('open');
+    elements.playerDialog.setAttribute('aria-hidden', 'true');
 }
 
 function resizeCanvas() {
@@ -603,6 +624,18 @@ function clientToWorld(clientX, clientY) {
 
 function bindEvents() {
     elements.refreshData.addEventListener('click', reloadEncryptedData);
+    elements.playerDialogClose.addEventListener('click', closePlayerDialog);
+    elements.playerDialog.addEventListener('click', event => {
+        if (event.target === elements.playerDialog) closePlayerDialog();
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && elements.playerDialog.classList.contains('open')) {
+            closePlayerDialog();
+        }
+    });
+    window.addEventListener('resize', () => {
+        if (!shouldUsePlayerDialog()) closePlayerDialog();
+    });
     elements.search.addEventListener('input', event => {
         state.query = event.target.value;
         applyFilters();

@@ -399,6 +399,60 @@ button { color: inherit; }
 .loading-overlay.hidden { display: none; }
 .loading-overlay i { color: var(--cyan); }
 
+.player-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background: rgba(3, 7, 15, 0.76);
+    backdrop-filter: blur(8px);
+}
+
+.player-dialog.open { display: flex; }
+
+.player-dialog-panel {
+    width: min(420px, 100%);
+    max-height: calc(100vh - 36px);
+    overflow-y: auto;
+    border: 1px solid rgba(34, 211, 238, 0.2);
+    border-radius: 16px;
+    background: #0a1322;
+    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);
+}
+
+.player-dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+}
+
+.player-dialog-header h2 { margin-top: 3px; font-family: var(--font-code); font-size: 15px; }
+
+.player-dialog-close {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.035);
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.player-dialog-close:hover { border-color: rgba(251, 113, 133, 0.4); background: rgba(251, 113, 133, 0.08); color: #fb7185; }
+.player-dialog-content { padding: 18px; }
+.player-dialog-content .player-name { font-size: 17px; }
+.player-dialog-content .player-data { gap: 9px; margin-top: 16px; }
+.player-dialog-content .player-data div { padding: 10px; }
+.player-dialog-content .player-data span { font-size: 8px; }
+.player-dialog-content .player-data strong { font-size: 11px; }
+
 .toast {
     position: fixed;
     right: 20px;
@@ -441,4 +495,16 @@ button { color: inherit; }
     .level-filters { grid-column: 1 / -1; }
     .results { min-height: 100px; }
     .tool-button.wide span, .map-hint { display: none; }
+}
+
+@media (max-width: 700px), (max-height: 650px) {
+    .player-dialog { align-items: flex-end; padding: 0; }
+    .player-dialog-panel {
+        width: 100%;
+        max-height: min(78vh, 520px);
+        border-right: 0;
+        border-bottom: 0;
+        border-left: 0;
+        border-radius: 18px 18px 0 0;
+    }
 }
