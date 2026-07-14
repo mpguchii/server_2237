@@ -15,6 +15,7 @@ const state = {
     filtered: [],
     selectedUid: null,
     alliance: 'all',
+    country: 'all',
     minLevel: null,
     maxLevel: null,
     query: '',
@@ -41,6 +42,7 @@ const elements = {
     refreshData: document.getElementById('refresh-data'),
     search: document.getElementById('player-search'),
     allianceFilter: document.getElementById('alliance-filter'),
+    countryFilter: document.getElementById('country-filter'),
     minLevelFilter: document.getElementById('min-level-filter'),
     maxLevelFilter: document.getElementById('max-level-filter'),
     legend: document.getElementById('alliance-legend'),
@@ -208,6 +210,18 @@ function populateFilters() {
         ).join('');
     elements.allianceFilter.value = alliances.includes(state.alliance) ? state.alliance : 'all';
 
+    const countryCounts = {};
+    state.players.forEach(player => {
+        countryCounts[player.country] = (countryCounts[player.country] || 0) + 1;
+    });
+    const countries = Object.keys(countryCounts)
+        .sort((a, b) => countryCounts[b] - countryCounts[a] || a.localeCompare(b));
+    elements.countryFilter.innerHTML = '<option value="all">All countries</option>' +
+        countries.map(country =>
+            `<option value="${escapeHtml(country)}">${escapeHtml(country)} (${formatNumber(countryCounts[country])})</option>`
+        ).join('');
+    elements.countryFilter.value = countries.includes(state.country) ? state.country : 'all';
+
     const levels = [...new Set(state.players.map(player => player.level).filter(Number.isFinite))]
         .sort((a, b) => a - b);
     const levelOptions = levels.map(level => `<option value="${level}">Level ${level}</option>`).join('');
@@ -234,6 +248,7 @@ function applyFilters() {
 
     state.filtered = state.players.filter(player => {
         if (state.alliance !== 'all' && player.alliance !== state.alliance) return false;
+        if (state.country !== 'all' && player.country !== state.country) return false;
         if (state.minLevel !== null && (!Number.isFinite(player.level) || player.level < state.minLevel)) return false;
         if (state.maxLevel !== null && (!Number.isFinite(player.level) || player.level > state.maxLevel)) return false;
         if (!query) return true;
@@ -577,6 +592,11 @@ function bindEvents() {
     });
     elements.allianceFilter.addEventListener('change', event => {
         state.alliance = event.target.value;
+        applyFilters();
+        fitFiltered();
+    });
+    elements.countryFilter.addEventListener('change', event => {
+        state.country = event.target.value;
         applyFilters();
         fitFiltered();
     });
