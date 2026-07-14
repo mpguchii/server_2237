@@ -26,6 +26,9 @@ const state = {
     dragging: false,
     moved: false,
     dragStart: null,
+    activePointers: new Map(),
+    pinching: false,
+    pinchStart: null,
     drawPending: false,
     metadata: null,
     password: null
@@ -677,21 +680,53 @@ function bindEvents() {
     }, { passive: false });
 
     elements.canvas.addEventListener('pointerdown', event => {
-        if (event.button !== 0) return;
-        state.dragging = true;
-        state.moved = false;
-        state.dragStart = {
-            clientX: event.clientX,
-            clientY: event.clientY,
-            view: { ...state.view }
-        };
+        if (event.pointerType !== 'touch' && event.button !== 0) return;
+        event.preventDefault();
+        state.activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
         elements.stage.classList.add('dragging');
         elements.canvas.setPointerCapture(event.pointerId);
+
+        if (state.activePointers.size === 1) {
+            state.dragging = true;
+            state.moved = false;
+            state.dragStart = {
+                clientX: event.clientX,
+                clientY: event.clientY,
+                view: { ...state.view }
+            };
+        } else if (state.activePointers.size === 2) {
+            startPinchGesture();
+        }
     });
 
     elements.canvas.addEventListener('pointermove', event => {
         const world = clientToWorld(event.clientX, event.clientY);
         elements.coordinates.textContent = `X ${Math.round(world.x)}   Y ${Math.round(world.y)}`;
+        if (state.activePointers.has(event.pointerId)) {
+            event.preventDefault();
+            state.activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        }
+
+        if (state.pinching && state.activePointers.size >= 2 && state.pinchStart) {
+            const [first, second] = [...state.activePointers.values()];
+            const distance = Math.max(1, Math.hypot(second.x - first.x, second.y - first.y));
+            const centerX = (first.x + second.x) / 2;
+            const centerY = (first.y + second.y) / 2;
+            const rect = elements.canvas.getBoundingClientRect();
+            const ratioX = (centerX - rect.left) / rect.width;
+            const ratioY = (centerY - rect.top) / rect.height;
+            const factor = state.pinchStart.distance / distance;
+            const nextWidth = state.pinchStart.view.width * factor;
+            const nextHeight = state.pinchStart.view.height * factor;
+            setView(
+                state.pinchStart.anchor.x - nextWidth * ratioX,
+                state.pinchStart.anchor.y - nextHeight * (1 - ratioY),
+                nextWidth,
+                nextHeight
+            );
+            return;
+        }
+
         if (!state.dragging || !state.dragStart) return;
         const rect = elements.canvas.getBoundingClientRect();
         const start = state.dragStart;
@@ -706,20 +741,64 @@ function bindEvents() {
         );
     });
 
-    const finishPointer = event => {
-        if (!state.dragging) return;
+    const finishPointer = (event, cancelled = false) => {
+        if (!state.activePointers.has(event.pointerId)) return;
         const wasMoved = state.moved;
-        state.dragging = false;
-        state.dragStart = null;
-        elements.stage.classList.remove('dragging');
+        state.activePointers.delete(event.pointerId);
         if (elements.canvas.hasPointerCapture(event.pointerId)) elements.canvas.releasePointerCapture(event.pointerId);
-        if (!wasMoved) {
+
+        if (state.pinching) {
+            if (state.activePointers.size >= 2) {
+                startPinchGesture();
+            } else if (state.activePointers.size === 1) {
+                const [remaining] = state.activePointers.values();
+                state.pinching = false;
+                state.pinchStart = null;
+                state.dragging = true;
+                state.moved = true;
+                state.dragStart = {
+                    clientX: remaining.x,
+                    clientY: remaining.y,
+                    view: { ...state.view }
+                };
+            } else {
+                state.pinching = false;
+                state.pinchStart = null;
+                state.dragging = false;
+                state.dragStart = null;
+                elements.stage.classList.remove('dragging');
+            }
+            return;
+        }
+
+        if (state.activePointers.size === 0) {
+            state.dragging = false;
+            state.dragStart = null;
+            elements.stage.classList.remove('dragging');
+        }
+        if (!cancelled && !wasMoved && state.activePointers.size === 0) {
             const uid = findPlayerAt(event.clientX, event.clientY);
             if (uid) selectPlayer(uid, !isDetailedView());
         }
     };
     elements.canvas.addEventListener('pointerup', finishPointer);
-    elements.canvas.addEventListener('pointercancel', finishPointer);
+    elements.canvas.addEventListener('pointercancel', event => finishPointer(event, true));
+}
+
+function startPinchGesture() {
+    const [first, second] = [...state.activePointers.values()];
+    if (!first || !second) return;
+    const centerX = (first.x + second.x) / 2;
+    const centerY = (first.y + second.y) / 2;
+    state.pinching = true;
+    state.dragging = false;
+    state.moved = true;
+    state.dragStart = null;
+    state.pinchStart = {
+        distance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
+        anchor: clientToWorld(centerX, centerY),
+        view: { ...state.view }
+    };
 }
 
 function setLoading(isLoading, message = '') {
