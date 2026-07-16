@@ -357,6 +357,58 @@ button { color: inherit; }
 .player-data .wide strong { white-space: normal; word-break: break-word; }
 .entity-note { margin-top: 10px; color: var(--muted); font-size: 8px; line-height: 1.5; }
 
+.loot-ranking {
+    flex: 0 0 auto;
+    overflow: hidden;
+    border: 1px solid rgba(249, 115, 22, 0.16);
+    border-radius: 10px;
+    background: rgba(249, 115, 22, 0.025);
+}
+
+.loot-ranking summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 10px;
+    color: var(--muted);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    list-style: none;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.loot-ranking summary::-webkit-details-marker { display: none; }
+.loot-ranking summary i { margin-right: 6px; color: #fbbf24; }
+.loot-ranking summary small { color: #fbbf24; font-family: var(--font-code); font-size: 8px; }
+.loot-results { max-height: 166px; display: flex; flex-direction: column; gap: 3px; padding: 0 6px 6px; overflow-y: auto; }
+
+.loot-result {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 6px;
+    border: 0;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.025);
+    color: #a8b5c8;
+    text-align: left;
+    cursor: pointer;
+}
+
+.loot-result:hover, .loot-result.active { background: rgba(249, 115, 22, 0.1); color: white; }
+.loot-rank { color: #64748b; font-family: var(--font-code); font-size: 7px; }
+.loot-truck { min-width: 0; }
+.loot-truck strong, .loot-truck small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loot-truck strong { font-size: 8px; }
+.loot-truck small { margin-top: 2px; color: var(--muted); font-family: var(--font-code); font-size: 7px; }
+.ur-shard-badge { padding: 3px 5px; border-radius: 999px; background: rgba(251, 191, 36, 0.13); color: #fbbf24; font-family: var(--font-code); font-size: 7px; font-weight: 700; white-space: nowrap; }
+.ur-shard-badge i { margin-right: 3px; font-size: 6px; }
+
 .results-heading { display: flex; align-items: center; justify-content: space-between; padding-top: 2px; }
 .results-heading small { color: var(--cyan); font-family: var(--font-code); font-size: 9px; }
 
@@ -555,6 +607,7 @@ button { color: inherit; }
     .sidebar { grid-row: 2; padding: 12px; border-top: 1px solid var(--border); border-right: 0; overflow-y: auto; }
     .layer-controls { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .selection, .legend { display: none; }
+    .loot-results { max-height: 132px; }
     .filters { display: grid; grid-template-columns: 1fr 1fr; }
     .level-filters { grid-column: 1 / -1; }
     .results { min-height: 100px; }

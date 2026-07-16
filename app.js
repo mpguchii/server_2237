@@ -17,7 +17,18 @@ const LAYER_COLORS = {
     cities: '#fbbf24',
     marks: '#fb7185'
 };
-const RESOURCE_COLORS = { A: '#34d399', B: '#60a5fa', C: '#fbbf24', D: '#a78bfa' };
+const RESOURCE_COLORS = {
+    Coin: '#fbbf24',
+    Iron: '#60a5fa',
+    Food: '#34d399',
+    Special: '#a78bfa'
+};
+const ITEM_NAMES = {
+    '2270000': 'Universal UR Hero Shard',
+    '200363': 'Pressure Pump I',
+    '200364': 'Wind Drive I'
+};
+const UNIVERSAL_UR_SHARD_ID = '2270000';
 const DETAIL_LAYERS = new Set(['players', 'resources', 'tasks', 'trucks']);
 
 const state = {
@@ -69,6 +80,8 @@ const elements = {
     selection: document.getElementById('player-selection'),
     results: document.getElementById('player-results'),
     resultCount: document.getElementById('result-count'),
+    truckLootResults: document.getElementById('truck-loot-results'),
+    truckLootCount: document.getElementById('truck-loot-count'),
     fitBases: document.getElementById('fit-bases'),
     fullMap: document.getElementById('full-map'),
     zoomIn: document.getElementById('zoom-in'),
@@ -200,7 +213,7 @@ function loadPayload(payload) {
     state.resources = normalizePoints(payload.resources, item => ({
         ...item,
         id: String(item.id ?? item.point_id ?? ''),
-        category: String(item.category || 'Resource'),
+        category: normalizeResourceCategory(item.category, item.cfg_id),
         level: numericOrNull(item.level),
         occupied: Boolean(item.occupied),
         x: Number(item.x), y: Number(item.y)
@@ -228,7 +241,22 @@ function loadPayload(payload) {
     buildAllianceData();
     populateFilters();
     applyFilters();
+    renderBestTruckLoot();
     renderMetadata();
+}
+
+function normalizeResourceCategory(category, cfgId) {
+    const legacyNames = { A: 'Coin', B: 'Iron', C: 'Food', D: 'Special' };
+    const value = String(category || '');
+    if (legacyNames[value]) return legacyNames[value];
+    if (RESOURCE_COLORS[value]) return value;
+
+    const baseId = Math.abs(Number(cfgId) || 0) % 1000;
+    if (baseId >= 1 && baseId <= 10) return 'Coin';
+    if (baseId >= 101 && baseId <= 110) return 'Iron';
+    if (baseId >= 201 && baseId <= 210) return 'Food';
+    if (baseId >= 301 && baseId <= 310) return 'Special';
+    return 'Resource';
 }
 
 function renderMetadata() {
@@ -345,6 +373,44 @@ function renderResults() {
     });
 }
 
+function renderBestTruckLoot() {
+    const ranked = state.trucks
+        .map(truck => ({ truck, shards: universalUrShardCount(truck) }))
+        .filter(entry => entry.shards > 0)
+        .sort((a, b) => b.shards - a.shards ||
+            (Number(b.truck.level) || 0) - (Number(a.truck.level) || 0) ||
+            String(a.truck.name || '').localeCompare(String(b.truck.name || '')));
+    const limit = 100;
+    elements.truckLootCount.textContent = `${formatNumber(ranked.length)} trucks`;
+    elements.truckLootResults.innerHTML = ranked.slice(0, limit).map((entry, index) => {
+        const truck = entry.truck;
+        const loot = formatGoods(truckGoods(truck));
+        return `
+            <button class="loot-result ${isSelected('trucks', truck.id) ? 'active' : ''}"
+                    data-truck-id="${escapeHtml(truck.id)}" title="${escapeHtml(loot)}">
+                <span class="loot-rank">#${index + 1}</span>
+                <span class="loot-truck">
+                    <strong>${escapeHtml(truck.name || `Truck ${truck.id}`)}</strong>
+                    <small>Lv.${truck.level || '—'} · ${formatCoordinate(truck.x)},${formatCoordinate(truck.y)}</small>
+                </span>
+                <span class="ur-shard-badge"><i class="fa-solid fa-star"></i>${formatNumber(entry.shards)} UR</span>
+            </button>`;
+    }).join('') + (ranked.length > limit
+        ? `<div class="results-more">+ ${formatNumber(ranked.length - limit)} trucks with UR shards</div>`
+        : '');
+
+    elements.truckLootResults.querySelectorAll('.loot-result').forEach(button => {
+        button.addEventListener('click', event => {
+            if (!state.layers.trucks) {
+                state.layers.trucks = true;
+                const input = elements.layerInputs.find(item => item.dataset.layer === 'trucks');
+                if (input) input.checked = true;
+            }
+            selectEntity('trucks', button.dataset.truckId, true, event.pointerType === 'touch');
+        });
+    });
+}
+
 function selectEntity(layer, id, center, forceDialog = false) {
     if (!DETAIL_LAYERS.has(layer)) return;
     const item = findEntity(layer, id);
@@ -366,6 +432,7 @@ function selectEntity(layer, id, center, forceDialog = false) {
     if (forceDialog || shouldUsePlayerDialog()) openPlayerDialog();
     if (center) centerAt(Number(item.x), Number(item.y), getDetailFocusWidth());
     renderResults();
+    renderBestTruckLoot();
     scheduleDraw();
 }
 
@@ -397,7 +464,7 @@ function entityDetails(layer, item) {
         rows: [['Current position', coordinates], ['Route', formatRoute(item)], ['Base level', item.level || item.base_level || '—'],
             ['Power', formatPower(item.power)], ['Alliance', item.alliance || '—'], ['Country', item.country || '—'],
             ['Heroes', listCount(item.heroes)], ['Arrives', formatTimestamp(item.arrive_at)], ['Owner UID', item.owner_uid || '—']],
-        note: formatGoods([...(item.base_goods || []), ...(item.extra_goods || [])])
+        note: formatGoods(truckGoods(item))
     };
     return null;
 }
@@ -1099,6 +1166,7 @@ function clearSelection() {
             <p>Click a map item or choose a player from the list.</p>
         </div>`;
     renderResults();
+    renderBestTruckLoot();
 }
 
 function detailRow(label, value, wide = false) {
@@ -1143,14 +1211,42 @@ function listCount(value) {
 }
 
 function formatGoods(goods) {
-    const items = Array.isArray(goods) ? goods : [];
+    const items = aggregateGoods(goods).sort((a, b) => {
+        const aUr = String(a.item_id || '') === UNIVERSAL_UR_SHARD_ID ? 1 : 0;
+        const bUr = String(b.item_id || '') === UNIVERSAL_UR_SHARD_ID ? 1 : 0;
+        return bUr - aUr || Number(Boolean(b.item_id)) - Number(Boolean(a.item_id));
+    });
     if (!items.length) return '';
     const summary = items.slice(0, 6).map(item => {
-        const label = item.item_id ? `Item ${item.item_id}` : `Reward ${item.type ?? '?'}`;
+        const itemId = item.item_id ? String(item.item_id) : '';
+        const label = itemId ? (ITEM_NAMES[itemId] || `Item ${itemId}`) : `Reward ${item.type ?? '?'}`;
         return `${label} × ${formatNumber(item.amount)}`;
     });
     if (items.length > 6) summary.push(`+ ${items.length - 6} more`);
     return `Rewards: ${summary.join(' · ')}`;
+}
+
+function aggregateGoods(goods) {
+    const grouped = new Map();
+    for (const item of Array.isArray(goods) ? goods : []) {
+        if (!item) continue;
+        const itemId = item.item_id === null || item.item_id === undefined ? '' : String(item.item_id);
+        const key = itemId ? `item:${itemId}` : `reward:${item.type ?? '?'}`;
+        const current = grouped.get(key) || { ...item, item_id: itemId || null, amount: 0 };
+        current.amount += Number(item.amount) || 0;
+        grouped.set(key, current);
+    }
+    return [...grouped.values()];
+}
+
+function truckGoods(truck) {
+    return [...(truck.base_goods || []), ...(truck.extra_goods || [])];
+}
+
+function universalUrShardCount(truck) {
+    return aggregateGoods(truckGoods(truck))
+        .filter(item => String(item.item_id || '') === UNIVERSAL_UR_SHARD_ID)
+        .reduce((total, item) => total + (Number(item.amount) || 0), 0);
 }
 
 function setLoading(isLoading, message = '') {
