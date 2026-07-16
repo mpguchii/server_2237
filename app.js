@@ -9,11 +9,27 @@ const ALLIANCE_COLORS = [
     '#60a5fa', '#f97316', '#e879f9', '#2dd4bf', '#a3e635',
     '#f472b6', '#38bdf8', '#c084fc', '#facc15', '#4ade80'
 ];
+const LAYER_COLORS = {
+    resources: '#34d399',
+    tasks: '#e879f9',
+    trucks: '#f97316',
+    marches: '#60a5fa',
+    cities: '#fbbf24',
+    marks: '#fb7185'
+};
+const RESOURCE_COLORS = { A: '#34d399', B: '#60a5fa', C: '#fbbf24', D: '#a78bfa' };
 
 const state = {
     players: [],
     filtered: [],
-    selectedUid: null,
+    resources: [],
+    tasks: [],
+    trucks: [],
+    marches: [],
+    cities: [],
+    marks: [],
+    layers: { players: true, resources: false, tasks: true, trucks: true, marches: false, cities: true, marks: false },
+    selected: null,
     alliance: 'all',
     country: 'all',
     minLevel: null,
@@ -63,6 +79,13 @@ const elements = {
     playerDialogClose: document.getElementById('player-dialog-close'),
     toast: document.getElementById('toast')
 };
+
+elements.dialogEyebrow = document.getElementById('player-dialog-eyebrow');
+elements.dialogTitle = document.getElementById('player-dialog-title');
+elements.layerInputs = [...document.querySelectorAll('[data-layer]')];
+elements.layerCounts = Object.fromEntries(
+    Object.keys(state.layers).map(layer => [layer, document.getElementById(`layer-count-${layer}`)])
+);
 
 elements.mapApp = document.getElementById('map-app');
 elements.authOverlay = document.getElementById('auth-overlay');
@@ -173,6 +196,34 @@ function loadPayload(payload) {
             y: Number(player.y)
         }));
 
+    state.resources = normalizePoints(payload.resources, item => ({
+        ...item,
+        id: String(item.id ?? item.point_id ?? ''),
+        category: String(item.category || 'Resource'),
+        level: numericOrNull(item.level),
+        occupied: Boolean(item.occupied),
+        x: Number(item.x), y: Number(item.y)
+    }));
+    state.tasks = normalizePoints(payload.tasks, item => ({
+        ...item,
+        id: String(item.id ?? item.task_id ?? `${item.x}:${item.y}`),
+        task_type: String(item.task_type || item.kind || 'Dispatch'),
+        x: Number(item.x), y: Number(item.y)
+    }));
+    state.trucks = normalizePoints(payload.trucks, normalizeMarch);
+    state.marches = normalizePoints(payload.marches, normalizeMarch);
+    state.cities = normalizePoints(payload.cities, item => ({
+        ...item,
+        id: String(item.id ?? item.city_id ?? `${item.x}:${item.y}`),
+        alliance: String(item.alliance || item.alliance_name || 'No alliance'),
+        x: Number(item.x), y: Number(item.y)
+    }));
+    state.marks = normalizePoints(payload.marks, item => ({
+        ...item,
+        id: String(item.id ?? item.mark_id ?? `${item.x}:${item.y}`),
+        x: Number(item.x), y: Number(item.y)
+    }));
+
     buildAllianceData();
     populateFilters();
     applyFilters();
@@ -188,6 +239,9 @@ function renderMetadata() {
     elements.updateStatus.textContent = generatedAt && !Number.isNaN(generatedAt.getTime())
         ? `Updated ${generatedAt.toLocaleString('en-US')}`
         : 'Data loaded';
+    for (const layer of Object.keys(state.layers)) {
+        if (elements.layerCounts[layer]) elements.layerCounts[layer].textContent = formatNumber(layerItems(layer).length);
+    }
 }
 
 function buildAllianceData() {
@@ -274,7 +328,7 @@ function applyFilters() {
 function renderResults() {
     const limit = 120;
     elements.results.innerHTML = state.filtered.slice(0, limit).map(player => `
-        <button class="result ${player.uid === state.selectedUid ? 'active' : ''}" data-uid="${escapeHtml(player.uid)}">
+        <button class="result ${isSelected('players', player.uid) ? 'active' : ''}" data-uid="${escapeHtml(player.uid)}">
             <span class="result-dot" style="background:${state.colors[player.alliance]}"></span>
             <span class="result-name" title="${escapeHtml(player.name)}">${escapeHtml(player.name)}</span>
             <span class="result-meta">Lv.${player.level || '—'} · ${player.x},${player.y}</span>
@@ -285,34 +339,85 @@ function renderResults() {
 
     elements.results.querySelectorAll('.result').forEach(button => {
         button.addEventListener('click', event => {
-            selectPlayer(button.dataset.uid, true, event.pointerType === 'touch');
+            selectEntity('players', button.dataset.uid, true, event.pointerType === 'touch');
         });
     });
 }
 
-function selectPlayer(uid, center, forceDialog = false) {
-    const player = state.players.find(item => item.uid === uid);
-    if (!player) return;
-    state.selectedUid = uid;
-    const color = state.colors[player.alliance];
+function selectEntity(layer, id, center, forceDialog = false) {
+    const item = findEntity(layer, id);
+    if (!item) return;
+    state.selected = { layer, id: entityId(layer, item) };
+    const details = entityDetails(layer, item);
     const detailsHtml = `
         <div class="player-title">
-            <div class="player-name" title="${escapeHtml(player.name)}">${escapeHtml(player.name)}</div>
-            <span class="alliance-badge" style="background:${color}">${escapeHtml(player.alliance)}</span>
+            <div class="player-name" title="${escapeHtml(details.title)}">${escapeHtml(details.title)}</div>
+            <span class="alliance-badge" style="background:${details.color}">${escapeHtml(details.badge)}</span>
         </div>
-        <div class="player-data">
-            <div><span>Coordinates</span><strong>${player.x}, ${player.y}</strong></div>
-            <div><span>Level</span><strong>${player.level || '—'}</strong></div>
-            <div><span>Country</span><strong>${escapeHtml(player.country)}</strong></div>
-            <div><span>UID</span><strong title="${player.uid}">${escapeHtml(player.uid)}</strong></div>
-        </div>
+        <div class="player-data">${details.rows.map(row => detailRow(row[0], row[1], row[2])).join('')}</div>
+        ${details.note ? `<p class="entity-note">${escapeHtml(details.note)}</p>` : ''}
     `;
     elements.selection.innerHTML = detailsHtml;
     elements.playerDialogContent.innerHTML = detailsHtml;
+    elements.dialogEyebrow.textContent = details.eyebrow;
+    elements.dialogTitle.textContent = details.dialogTitle;
     if (forceDialog || shouldUsePlayerDialog()) openPlayerDialog();
-    if (center) centerAt(player.x, player.y, getDetailFocusWidth());
+    if (center) centerAt(Number(item.x), Number(item.y), getDetailFocusWidth());
     renderResults();
     scheduleDraw();
+}
+
+function entityDetails(layer, item) {
+    const coordinates = `${formatCoordinate(item.x)}, ${formatCoordinate(item.y)}`;
+    if (layer === 'players') return {
+        title: item.name, badge: item.alliance, color: state.colors[item.alliance] || '#64748b',
+        eyebrow: 'Selected base', dialogTitle: 'Player details',
+        rows: [['Coordinates', coordinates], ['Level', item.level || '—'], ['Country', item.country], ['UID', item.uid]]
+    };
+    if (layer === 'resources') return {
+        title: `${item.category} resource`, badge: item.occupied ? 'Occupied' : 'Free',
+        color: RESOURCE_COLORS[item.category] || LAYER_COLORS.resources,
+        eyebrow: 'Selected resource', dialogTitle: 'Resource details',
+        rows: [['Coordinates', coordinates], ['Level', item.level || '—'], ['Status', item.occupied ? 'Occupied' : 'Available'],
+            ['Gatherer', item.owner_name || item.gatherer_name || (item.occupied ? 'Unknown player' : 'Unoccupied'), true],
+            ['Alliance', item.owner_alliance || item.alliance || '—'], ['Config ID', item.cfg_id || '—']]
+    };
+    if (layer === 'tasks') return {
+        title: item.owner_name || item.player_name || 'Unassigned task', badge: item.task_type || 'Task', color: LAYER_COLORS.tasks,
+        eyebrow: 'Selected task', dialogTitle: 'Task details',
+        rows: [['Coordinates', coordinates], ['Type', item.task_type || 'Dispatch'], ['Config ID', item.cfg_id || '—'],
+            ['Alliance', item.owner_alliance || item.alliance || '—'], ['Heroes', listCount(item.hero_ids || item.heroes)], ['Expires', formatTimestamp(item.expires_at)]],
+        note: formatGoods(item.rewards || item.goods)
+    };
+    if (layer === 'trucks') return {
+        title: item.name || item.owner_name || `Truck ${item.id}`, badge: 'Truck', color: LAYER_COLORS.trucks,
+        eyebrow: 'Selected truck', dialogTitle: 'Truck details',
+        rows: [['Current position', coordinates], ['Route', formatRoute(item)], ['Base level', item.level || item.base_level || '—'],
+            ['Power', formatPower(item.power)], ['Alliance', item.alliance || '—'], ['Country', item.country || '—'],
+            ['Heroes', listCount(item.heroes)], ['Arrives', formatTimestamp(item.arrive_at)], ['Owner UID', item.owner_uid || '—']],
+        note: formatGoods([...(item.base_goods || []), ...(item.extra_goods || [])])
+    };
+    if (layer === 'marches') return {
+        title: item.name || item.owner_name || `March ${item.id}`, badge: 'March', color: LAYER_COLORS.marches,
+        eyebrow: 'Selected march', dialogTitle: 'March details',
+        rows: [['Current position', coordinates], ['Route', formatRoute(item)], ['Power', formatPower(item.power)],
+            ['Alliance', item.alliance || '—'], ['Type', item.march_type || item.type_name || (item.mt ? `Type ${item.mt}` : 'March')],
+            ['Heroes', listCount(item.heroes)], ['Arrives', formatTimestamp(item.arrive_at)], ['Owner UID', item.owner_uid || '—']]
+    };
+    if (layer === 'cities') return {
+        title: item.name || item.alliance_name || `City ${item.city_id || item.id}`, badge: item.alliance || 'Alliance city',
+        color: state.colors[item.alliance] || LAYER_COLORS.cities,
+        eyebrow: 'Selected city', dialogTitle: 'Alliance city details',
+        rows: [['Coordinates', coordinates], ['City ID', item.city_id || item.id], ['Alliance', item.alliance_name || item.alliance || '—'],
+            ['Class', item.class_value || item.city_class || item.class || '—'], ['Durability', item.durability ? formatNumber(item.durability) : '—'],
+            ['Protection time', formatTimestamp(item.protect_at)], ['Server', item.server || '—']]
+    };
+    return {
+        title: item.name || item.label || `Map mark ${item.id}`, badge: item.mark_type || 'Mark', color: LAYER_COLORS.marks,
+        eyebrow: 'Selected mark', dialogTitle: 'Map mark details',
+        rows: [['Coordinates', coordinates], ['Type', item.mark_type || item.type || 'Favorite'],
+            ['Owner', item.owner_name || item.uid || '—'], ['Alliance', item.alliance || '—'], ['Note', item.description || item.note || '—', true]]
+    };
 }
 
 function shouldUsePlayerDialog() {
@@ -387,20 +492,29 @@ function showFullMap() {
     setView(0, 0, WORLD_SIZE, WORLD_SIZE);
 }
 
-function fitFiltered() {
-    const players = state.filtered.length ? state.filtered : state.players;
-    if (!players.length) return showFullMap();
-    if (players.length === 1) {
-        centerAt(players[0].x, players[0].y, getDetailFocusWidth());
+function fitVisibleLayers() {
+    const points = [];
+    for (const layer of Object.keys(state.layers)) {
+        if (!state.layers[layer]) continue;
+        const items = layer === 'players' ? state.filtered : layerItems(layer);
+        items.forEach(item => {
+            points.push({ x: Number(item.x), y: Number(item.y) });
+            if (item.start && Number.isFinite(Number(item.start.x))) points.push({ x: Number(item.start.x), y: Number(item.start.y) });
+            if (item.end && Number.isFinite(Number(item.end.x))) points.push({ x: Number(item.end.x), y: Number(item.end.y) });
+        });
+    }
+    if (!points.length) return showFullMap();
+    if (points.length === 1) {
+        centerAt(points[0].x, points[0].y, getDetailFocusWidth());
         return;
     }
-    const xs = players.map(player => player.x);
-    const ys = players.map(player => player.y);
+    const xs = points.map(point => point.x);
+    const ys = points.map(point => point.y);
     const minX = Math.min(...xs);
     const maxX = Math.max(...xs);
     const minY = Math.min(...ys);
     const maxY = Math.max(...ys);
-    const padding = players.length === 1 ? 28 : 18;
+    const padding = 18;
     setView(
         minX - padding,
         minY - padding,
@@ -465,16 +579,27 @@ function drawMap() {
     state.hitAreas = [];
     const detailed = isDetailedView(rect);
     const marginWorld = detailed ? CARD_HEIGHT / rect.height * state.view.height : 4;
-    const visible = state.filtered.filter(player =>
-        player.x >= state.view.x - marginWorld &&
-        player.x <= state.view.x + state.view.width + marginWorld &&
-        player.y >= state.view.y - marginWorld &&
-        player.y <= state.view.y + state.view.height + marginWorld
-    );
-    visible.sort((a, b) => Number(a.uid === state.selectedUid) - Number(b.uid === state.selectedUid));
+    if (state.layers.resources) visibleItems('resources', marginWorld).forEach(item => drawResource(item, detailed));
+    if (state.layers.cities) visibleItems('cities', marginWorld).forEach(item => drawCity(item, detailed));
+    if (state.layers.marks) visibleItems('marks', marginWorld).forEach(item => drawMapMarker(item, 'marks', 'M', LAYER_COLORS.marks, detailed));
+    if (state.layers.tasks) visibleItems('tasks', marginWorld).forEach(item => drawMapMarker(item, 'tasks', '!', LAYER_COLORS.tasks, detailed));
+    if (state.layers.marches) visibleItems('marches', marginWorld).forEach(item => drawMovingEntity(item, 'marches', detailed));
+    if (state.layers.trucks) visibleItems('trucks', marginWorld).forEach(item => drawMovingEntity(item, 'trucks', detailed));
 
-    if (detailed) visible.forEach(player => drawPlayerCard(player));
-    else visible.forEach(player => drawPlayerDot(player));
+    if (state.layers.players) {
+        const visible = visibleItems('players', marginWorld);
+        visible.sort((a, b) => Number(isSelected('players', a.uid)) - Number(isSelected('players', b.uid)));
+        if (detailed) visible.forEach(player => drawPlayerCard(player));
+        else visible.forEach(player => drawPlayerDot(player));
+    }
+}
+
+function visibleItems(layer, marginWorld = 4) {
+    const items = layer === 'players' ? state.filtered : layerItems(layer);
+    return items.filter(item =>
+        item.x >= state.view.x - marginWorld && item.x <= state.view.x + state.view.width + marginWorld &&
+        item.y >= state.view.y - marginWorld && item.y <= state.view.y + state.view.height + marginWorld
+    );
 }
 
 function drawWorld(width, height) {
@@ -517,7 +642,7 @@ function drawWorld(width, height) {
 
 function drawPlayerDot(player) {
     const point = worldToScreen(player.x, player.y);
-    const selected = player.uid === state.selectedUid;
+    const selected = isSelected('players', player.uid);
     const radius = selected ? 5 : 2.4;
     context.beginPath();
     context.arc(point.x, point.y, radius, 0, Math.PI * 2);
@@ -530,7 +655,7 @@ function drawPlayerDot(player) {
         context.strokeStyle = '#ffffff';
         context.stroke();
     }
-    state.hitAreas.push({ uid: player.uid, type: 'dot', x: point.x, y: point.y, radius: Math.max(7, radius) });
+    state.hitAreas.push({ layer: 'players', id: player.uid, type: 'dot', x: point.x, y: point.y, radius: Math.max(7, radius) });
 }
 
 function drawPlayerCard(player) {
@@ -538,7 +663,7 @@ function drawPlayerCard(player) {
     const left = Math.round(anchor.x - CARD_WIDTH / 2);
     const top = Math.round(anchor.y - CARD_HEIGHT - 3);
     const color = state.colors[player.alliance];
-    const selected = player.uid === state.selectedUid;
+    const selected = isSelected('players', player.uid);
 
     context.save();
     if (selected) {
@@ -588,7 +713,128 @@ function drawPlayerCard(player) {
     context.font = '700 7px "Fira Code"';
     context.fillText(`${player.x},${player.y}`, left + CARD_WIDTH / 2, top + 49);
 
-    state.hitAreas.push({ uid: player.uid, type: 'card', left, top, width: CARD_WIDTH, height: CARD_HEIGHT });
+    state.hitAreas.push({ layer: 'players', id: player.uid, type: 'card', left, top, width: CARD_WIDTH, height: CARD_HEIGHT });
+}
+
+function drawResource(item, detailed) {
+    const color = RESOURCE_COLORS[item.category] || LAYER_COLORS.resources;
+    const point = worldToScreen(item.x, item.y);
+    const selected = isSelected('resources', item.id);
+    const size = detailed ? 6 : 3;
+    context.save();
+    context.translate(point.x, point.y);
+    context.rotate(Math.PI / 4);
+    context.fillStyle = colorWithAlpha(color, item.occupied ? 0.95 : 0.62);
+    context.fillRect(-size, -size, size * 2, size * 2);
+    if (selected) {
+        context.lineWidth = 2;
+        context.strokeStyle = '#ffffff';
+        context.strokeRect(-size - 1, -size - 1, size * 2 + 2, size * 2 + 2);
+    }
+    context.restore();
+    if (detailed) drawMarkerLabel(point.x, point.y - 10, `${item.category}${item.level || ''}`, color);
+    pushPointHit('resources', item.id, point, Math.max(8, size + 3));
+}
+
+function drawCity(item, detailed) {
+    const color = state.colors[item.alliance] || LAYER_COLORS.cities;
+    const point = worldToScreen(item.x, item.y);
+    const selected = isSelected('cities', item.id);
+    const radius = detailed ? 9 : 4.5;
+    context.beginPath();
+    for (let index = 0; index < 6; index++) {
+        const angle = Math.PI / 6 + index * Math.PI / 3;
+        const x = point.x + Math.cos(angle) * radius;
+        const y = point.y + Math.sin(angle) * radius;
+        index ? context.lineTo(x, y) : context.moveTo(x, y);
+    }
+    context.closePath();
+    context.fillStyle = colorWithAlpha(color, 0.7);
+    context.fill();
+    context.lineWidth = selected ? 2.5 : 1;
+    context.strokeStyle = selected ? '#ffffff' : color;
+    context.stroke();
+    if (detailed) drawMarkerLabel(point.x, point.y - 14, truncate(item.alliance || item.name || 'City', 10), color);
+    pushPointHit('cities', item.id, point, Math.max(10, radius + 2));
+}
+
+function drawMapMarker(item, layer, glyph, color, detailed) {
+    const point = worldToScreen(item.x, item.y);
+    const selected = isSelected(layer, item.id);
+    const radius = detailed ? 7 : 3.5;
+    context.beginPath();
+    context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+    context.fillStyle = colorWithAlpha(color, 0.78);
+    context.fill();
+    context.lineWidth = selected ? 2.5 : 1;
+    context.strokeStyle = selected ? '#ffffff' : color;
+    context.stroke();
+    if (detailed) {
+        context.fillStyle = '#07101c';
+        context.font = '700 8px "Fira Code"';
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.fillText(glyph, point.x, point.y + 0.5);
+    }
+    pushPointHit(layer, item.id, point, Math.max(8, radius + 2));
+}
+
+function drawMovingEntity(item, layer, detailed) {
+    const color = LAYER_COLORS[layer];
+    drawRoute(item, color);
+    const point = worldToScreen(item.x, item.y);
+    const selected = isSelected(layer, item.id);
+    const width = detailed ? 13 : 7;
+    const height = detailed ? 8 : 5;
+    context.save();
+    context.translate(point.x, point.y);
+    const start = item.start || {};
+    const end = item.end || {};
+    if (Number.isFinite(Number(start.x)) && Number.isFinite(Number(end.x))) {
+        const screenStart = worldToScreen(Number(start.x), Number(start.y));
+        const screenEnd = worldToScreen(Number(end.x), Number(end.y));
+        context.rotate(Math.atan2(screenEnd.y - screenStart.y, screenEnd.x - screenStart.x));
+    }
+    roundedRect(context, -width / 2, -height / 2, width, height, 2);
+    context.fillStyle = colorWithAlpha(color, 0.9);
+    context.fill();
+    context.lineWidth = selected ? 2 : 1;
+    context.strokeStyle = selected ? '#ffffff' : color;
+    context.stroke();
+    context.restore();
+    if (detailed && layer === 'trucks') drawMarkerLabel(point.x, point.y - 10, truncate(item.name || item.owner_name || 'Truck', 9), color);
+    pushPointHit(layer, item.id, point, Math.max(9, width / 2 + 2));
+}
+
+function drawRoute(item, color) {
+    if (!item.start || !item.end) return;
+    if (![item.start.x, item.start.y, item.end.x, item.end.y].every(value => Number.isFinite(Number(value)))) return;
+    const start = worldToScreen(Number(item.start.x), Number(item.start.y));
+    const end = worldToScreen(Number(item.end.x), Number(item.end.y));
+    context.beginPath();
+    context.moveTo(start.x, start.y);
+    context.lineTo(end.x, end.y);
+    context.strokeStyle = colorWithAlpha(color, 0.2);
+    context.lineWidth = 1;
+    context.stroke();
+}
+
+function drawMarkerLabel(x, y, text, color) {
+    context.font = '700 7px "Fira Code"';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    const width = context.measureText(text).width + 6;
+    roundedRect(context, x - width / 2, y - 5, width, 10, 2);
+    context.fillStyle = 'rgba(7,15,27,0.9)';
+    context.fill();
+    context.strokeStyle = colorWithAlpha(color, 0.7);
+    context.stroke();
+    context.fillStyle = '#f8fafc';
+    context.fillText(text, x, y);
+}
+
+function pushPointHit(layer, id, point, radius) {
+    state.hitAreas.push({ layer, id: String(id), type: 'dot', x: point.x, y: point.y, radius });
 }
 
 function roundedRect(ctx, x, y, width, height, radius) {
@@ -602,16 +848,16 @@ function roundedRect(ctx, x, y, width, height, radius) {
     ctx.closePath();
 }
 
-function findPlayerAt(clientX, clientY) {
+function findEntityAt(clientX, clientY) {
     const rect = elements.canvas.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
     for (let index = state.hitAreas.length - 1; index >= 0; index--) {
         const hit = state.hitAreas[index];
         if (hit.type === 'card') {
-            if (x >= hit.left && x <= hit.left + hit.width && y >= hit.top && y <= hit.top + hit.height) return hit.uid;
+            if (x >= hit.left && x <= hit.left + hit.width && y >= hit.top && y <= hit.top + hit.height) return hit;
         } else if (Math.hypot(x - hit.x, y - hit.y) <= hit.radius) {
-            return hit.uid;
+            return hit;
         }
     }
     return null;
@@ -650,6 +896,14 @@ function bindEvents() {
     window.addEventListener('resize', () => {
         if (!shouldUsePlayerDialog()) closePlayerDialog();
     });
+    elements.layerInputs.forEach(input => {
+        input.addEventListener('change', event => {
+            const layer = event.target.dataset.layer;
+            state.layers[layer] = event.target.checked;
+            if (!state.layers[layer] && state.selected?.layer === layer) clearSelection();
+            scheduleDraw();
+        });
+    });
     elements.search.addEventListener('input', event => {
         state.query = event.target.value;
         applyFilters();
@@ -657,12 +911,12 @@ function bindEvents() {
     elements.allianceFilter.addEventListener('change', event => {
         state.alliance = event.target.value;
         applyFilters();
-        fitFiltered();
+        fitVisibleLayers();
     });
     elements.countryFilter.addEventListener('change', event => {
         state.country = event.target.value;
         applyFilters();
-        fitFiltered();
+        fitVisibleLayers();
     });
     elements.minLevelFilter.addEventListener('change', event => {
         state.minLevel = event.target.value === 'all' ? null : Number(event.target.value);
@@ -680,7 +934,7 @@ function bindEvents() {
         }
         applyFilters();
     });
-    elements.fitBases.addEventListener('click', fitFiltered);
+    elements.fitBases.addEventListener('click', fitVisibleLayers);
     elements.fullMap.addEventListener('click', showFullMap);
     elements.zoomIn.addEventListener('click', () => zoom(0.72));
     elements.zoomOut.addEventListener('click', () => zoom(1.38));
@@ -788,8 +1042,8 @@ function bindEvents() {
             elements.stage.classList.remove('dragging');
         }
         if (!cancelled && !wasMoved && state.activePointers.size === 0) {
-            const uid = findPlayerAt(event.clientX, event.clientY);
-            if (uid) selectPlayer(uid, !isDetailedView(), event.pointerType === 'touch');
+            const hit = findEntityAt(event.clientX, event.clientY);
+            if (hit) selectEntity(hit.layer, hit.id, !isDetailedView(), event.pointerType === 'touch');
         }
     };
     elements.canvas.addEventListener('pointerup', finishPointer);
@@ -810,6 +1064,110 @@ function startPinchGesture() {
         anchor: clientToWorld(centerX, centerY),
         view: { ...state.view }
     };
+}
+
+function normalizePoints(items, mapper) {
+    return (Array.isArray(items) ? items : [])
+        .filter(item => item && Number.isFinite(Number(item.x)) && Number.isFinite(Number(item.y)))
+        .map(mapper);
+}
+
+function normalizeMarch(item) {
+    return {
+        ...item,
+        id: String(item.id ?? item.uuid ?? `${item.x}:${item.y}`),
+        x: Number(item.x), y: Number(item.y),
+        start: Number.isFinite(Number(item.start_x)) && Number.isFinite(Number(item.start_y))
+            ? { x: Number(item.start_x), y: Number(item.start_y) }
+            : item.start,
+        end: Number.isFinite(Number(item.end_x)) && Number.isFinite(Number(item.end_y))
+            ? { x: Number(item.end_x), y: Number(item.end_y) }
+            : item.end
+    };
+}
+
+function layerItems(layer) {
+    return Array.isArray(state[layer]) ? state[layer] : [];
+}
+
+function totalMapItems() {
+    return Object.keys(state.layers).reduce((total, layer) => total + layerItems(layer).length, 0);
+}
+
+function entityId(layer, item) {
+    return String(layer === 'players' ? item.uid : item.id);
+}
+
+function isSelected(layer, id) {
+    return state.selected?.layer === layer && state.selected.id === String(id);
+}
+
+function findEntity(layer, id) {
+    return layerItems(layer).find(item => entityId(layer, item) === String(id));
+}
+
+function clearSelection() {
+    state.selected = null;
+    closePlayerDialog();
+    elements.selection.innerHTML = `
+        <div class="selection-empty">
+            <i class="fa-solid fa-location-crosshairs"></i>
+            <strong>Nothing selected</strong>
+            <p>Click a map item or choose a player from the list.</p>
+        </div>`;
+    renderResults();
+}
+
+function detailRow(label, value, wide = false) {
+    const text = value === null || value === undefined || value === '' ? '—' : String(value);
+    return `<div class="${wide ? 'wide' : ''}"><span>${escapeHtml(label)}</span><strong title="${escapeHtml(text)}">${escapeHtml(text)}</strong></div>`;
+}
+
+function numericOrNull(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+}
+
+function formatCoordinate(value) {
+    const number = Number(value);
+    return Number.isInteger(number) ? String(number) : number.toFixed(1).replace(/\.0$/, '');
+}
+
+function formatTimestamp(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number) || number <= 0) return '—';
+    const date = new Date(number);
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('en-US');
+}
+
+function formatPower(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number) || number <= 0) return '—';
+    if (number >= 1_000_000_000) return `${(number / 1_000_000_000).toFixed(2)}B`;
+    if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(2)}M`;
+    if (number >= 1_000) return `${(number / 1_000).toFixed(1)}K`;
+    return formatNumber(number);
+}
+
+function formatRoute(item) {
+    if (!item.start || !item.end) return '—';
+    return `${formatCoordinate(item.start.x)},${formatCoordinate(item.start.y)} → ${formatCoordinate(item.end.x)},${formatCoordinate(item.end.y)}`;
+}
+
+function listCount(value) {
+    if (!Array.isArray(value) || !value.length) return '—';
+    return formatNumber(value.length);
+}
+
+function formatGoods(goods) {
+    const items = Array.isArray(goods) ? goods : [];
+    if (!items.length) return '';
+    const summary = items.slice(0, 6).map(item => {
+        const label = item.item_id ? `Item ${item.item_id}` : `Reward ${item.type ?? '?'}`;
+        return `${label} × ${formatNumber(item.amount)}`;
+    });
+    if (items.length > 6) summary.push(`+ ${items.length - 6} more`);
+    return `Rewards: ${summary.join(' · ')}`;
 }
 
 function setLoading(isLoading, message = '') {
