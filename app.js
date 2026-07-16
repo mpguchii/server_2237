@@ -18,6 +18,7 @@ const LAYER_COLORS = {
     marks: '#fb7185'
 };
 const RESOURCE_COLORS = { A: '#34d399', B: '#60a5fa', C: '#fbbf24', D: '#a78bfa' };
+const DETAIL_LAYERS = new Set(['players', 'resources', 'tasks', 'trucks']);
 
 const state = {
     players: [],
@@ -345,6 +346,7 @@ function renderResults() {
 }
 
 function selectEntity(layer, id, center, forceDialog = false) {
+    if (!DETAIL_LAYERS.has(layer)) return;
     const item = findEntity(layer, id);
     if (!item) return;
     state.selected = { layer, id: entityId(layer, item) };
@@ -397,27 +399,7 @@ function entityDetails(layer, item) {
             ['Heroes', listCount(item.heroes)], ['Arrives', formatTimestamp(item.arrive_at)], ['Owner UID', item.owner_uid || '—']],
         note: formatGoods([...(item.base_goods || []), ...(item.extra_goods || [])])
     };
-    if (layer === 'marches') return {
-        title: item.name || item.owner_name || `March ${item.id}`, badge: 'March', color: LAYER_COLORS.marches,
-        eyebrow: 'Selected march', dialogTitle: 'March details',
-        rows: [['Current position', coordinates], ['Route', formatRoute(item)], ['Power', formatPower(item.power)],
-            ['Alliance', item.alliance || '—'], ['Type', item.march_type || item.type_name || (item.mt ? `Type ${item.mt}` : 'March')],
-            ['Heroes', listCount(item.heroes)], ['Arrives', formatTimestamp(item.arrive_at)], ['Owner UID', item.owner_uid || '—']]
-    };
-    if (layer === 'cities') return {
-        title: item.name || item.alliance_name || `City ${item.city_id || item.id}`, badge: item.alliance || 'Alliance city',
-        color: state.colors[item.alliance] || LAYER_COLORS.cities,
-        eyebrow: 'Selected city', dialogTitle: 'Alliance city details',
-        rows: [['Coordinates', coordinates], ['City ID', item.city_id || item.id], ['Alliance', item.alliance_name || item.alliance || '—'],
-            ['Class', item.class_value || item.city_class || item.class || '—'], ['Durability', item.durability ? formatNumber(item.durability) : '—'],
-            ['Protection time', formatTimestamp(item.protect_at)], ['Server', item.server || '—']]
-    };
-    return {
-        title: item.name || item.label || `Map mark ${item.id}`, badge: item.mark_type || 'Mark', color: LAYER_COLORS.marks,
-        eyebrow: 'Selected mark', dialogTitle: 'Map mark details',
-        rows: [['Coordinates', coordinates], ['Type', item.mark_type || item.type || 'Favorite'],
-            ['Owner', item.owner_name || item.uid || '—'], ['Alliance', item.alliance || '—'], ['Note', item.description || item.note || '—', true]]
-    };
+    return null;
 }
 
 function shouldUsePlayerDialog() {
@@ -834,6 +816,7 @@ function drawMarkerLabel(x, y, text, color) {
 }
 
 function pushPointHit(layer, id, point, radius) {
+    if (!DETAIL_LAYERS.has(layer)) return;
     state.hitAreas.push({ layer, id: String(id), type: 'dot', x: point.x, y: point.y, radius });
 }
 
